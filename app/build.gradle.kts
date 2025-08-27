@@ -46,6 +46,7 @@ android {
 }
 
 dependencies {
+    implementation("org.jetbrains.kotlinx:kotlinx-collections-immutable:0.3.7")
     // Dependencies moved to toml file
     implementation(libs.androidx.compose.animation)
     coreLibraryDesugaring(libs.desugar.jdk.libs)

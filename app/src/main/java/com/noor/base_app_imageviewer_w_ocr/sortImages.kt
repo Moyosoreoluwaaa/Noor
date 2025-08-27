@@ -1,4 +1,4 @@
-package com.noor.base_app_1.data
+package com.noor.base_app_imageviewer_w_ocr
 
 // Extension Functions
 fun List<ImageItem>.sortImages(sortType: SortType): List<ImageItem> {

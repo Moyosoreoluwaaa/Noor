@@ -1,18 +1,19 @@
-package com.noor.base_app_note.repository
+package com.noor.base_app_note.data.repository
 
-import android.Manifest
-import android.app.Activity
 import android.content.Context
-import android.content.pm.PackageManager
-import android.os.Build
+import android.net.Uri
 import android.os.Environment
-import androidx.core.app.ActivityCompat
-import androidx.core.content.ContextCompat
 import androidx.core.content.edit
+import androidx.core.net.toUri
 import com.google.gson.Gson
 import com.google.gson.reflect.TypeToken
+import com.noor.base_app_imageviewer_w_ocr.ImageItem
+import com.noor.base_app_imageviewer_w_ocr.OCRProcessor
 import com.noor.base_app_imageviewer_w_ocr.TagColor
 import com.noor.base_app_imageviewer_w_ocr.TagType
+import com.noor.base_app_note.repository.Note
+import com.noor.base_app_note.repository.NoteFolder
+import com.noor.base_app_note.repository.Tag
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -22,102 +23,11 @@ import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.withContext
 import timber.log.Timber
 import java.io.File
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
 import java.util.UUID
 
-// File: Tag.kt
-// Package: com.noteapp.data.model
-data class Tag(
-    val id: String = UUID.randomUUID().toString(),
-    val type: TagType,
-    val color: TagColor,
-    val customName: String? = null // For user-defined tags beyond enum
-) {
-    val displayName: String
-        get() = customName ?: type.name.lowercase().replaceFirstChar { it.uppercase() }
-}
-
-// File: NoteFolder.kt
-// Package: com.noteapp.data.model
-data class NoteFolder(
-    val id: String = UUID.randomUUID().toString(),
-    val name: String,
-    val path: String, // File system path
-    val parentId: String? = null,
-    val iconName: String = "folder", // Material icon name
-    val color: TagColor = TagColor.BLUE,
-    val createdAt: Long = System.currentTimeMillis(),
-    val modifiedAt: Long = System.currentTimeMillis()
-)
-
-// File: Note.kt
-// Package: com.noteapp.data.model
-data class Note(
-    val id: String = UUID.randomUUID().toString(),
-    val title: String,
-    val content: String, // Markdown content
-    val filePath: String, // Full file system path to .md file
-    val folderId: String? = null,
-    val tags: List<Tag> = emptyList(),
-    val createdAt: Long = System.currentTimeMillis(),
-    val modifiedAt: Long = System.currentTimeMillis(),
-    val isFavorite: Boolean = false,
-    val wordCount: Int = 0
-) {
-    val fileName: String
-        get() = "$title.md"
-
-    fun updateWordCount(): Note {
-        val words = content.trim().split("\\s+".toRegex()).filter { it.isNotEmpty() }
-        return copy(wordCount = words.size)
-    }
-}
-
-// File: PermissionHandler.kt
-// Package: com.noteapp.data.permissions
-class PermissionHandler(private val context: Context) {
-
-    companion object {
-        const val REQUEST_STORAGE_PERMISSION = 1001
-
-        val REQUIRED_PERMISSIONS = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-            arrayOf(
-                Manifest.permission.READ_MEDIA_IMAGES,
-                Manifest.permission.READ_MEDIA_VIDEO,
-                Manifest.permission.READ_MEDIA_AUDIO
-            )
-        } else if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-            arrayOf(
-                Manifest.permission.READ_EXTERNAL_STORAGE
-            )
-        } else {
-            arrayOf(
-                Manifest.permission.READ_EXTERNAL_STORAGE,
-                Manifest.permission.WRITE_EXTERNAL_STORAGE
-            )
-        }
-    }
-
-    fun hasStoragePermissions(): Boolean {
-        return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-            // For Android 10+, we can use app-specific directories without permissions
-            true
-        } else {
-            REQUIRED_PERMISSIONS.all { permission ->
-                ContextCompat.checkSelfPermission(context, permission) == PackageManager.PERMISSION_GRANTED
-            }
-        }
-    }
-
-    fun shouldShowRationale(activity: Activity): Boolean {
-        return REQUIRED_PERMISSIONS.any { permission ->
-            ActivityCompat.shouldShowRequestPermissionRationale(activity, permission)
-        }
-    }
-}
-
-
-// File: DebugNoteRepositoryImpl.kt
-// Package: com.noteapp.data.repository
 class FixedNoteRepositoryImpl(
     context: Context
 ) {
@@ -548,3 +458,4 @@ class FixedNoteRepositoryImpl(
         Timber.tag(TAG).d("Updated folder in list: ${folder.name}")
     }
 }
+

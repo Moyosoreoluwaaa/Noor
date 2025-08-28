@@ -1,7 +1,7 @@
 package com.noor
 
+import android.content.Intent
 import android.os.Bundle
-import android.util.Log
 import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
@@ -14,7 +14,6 @@ import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
-import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -23,41 +22,51 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
-import androidx.navigation.NavType
-import androidx.navigation.compose.NavHost
-import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
-import androidx.navigation.navArgument
-import com.noor.base_app_imageviewer_w_ocr.AlbumScreen
-import com.noor.base_app_imageviewer_w_ocr.FullScreenImageScreen
+import com.noor.base_app_imageviewer_w_ocr.OCRProcessor
+import com.noor.base_app_imageviewer_w_ocr_bg_scan.data.repository.OCRRepositoryImpl
+import com.noor.base_app_imageviewer_w_ocr_bg_scan.presentation.viewmodels.OCRViewModel
+import com.noor.base_app_imageviewer_w_ocr_bg_scan.worker.WorkManagerSetup
 import com.noor.base_app_note.FixedEditorViewModel
-import com.noor.base_app_note.NotesNavigation
 import com.noor.base_app_note.NotesViewModel
 import com.noor.base_app_note.PermissionScreen
-import com.noor.base_app_note.repository.FixedNoteRepositoryImpl
-import com.noor.base_app_note.repository.PermissionHandler
+import com.noor.base_app_note.Routes
+import com.noor.base_app_note.data.permissions.PermissionHandler
+import com.noor.base_app_note.data.repository.FixedNoteRepositoryImpl
+import com.noor.base_app_note.presentation.navigation.NotesNavigation
 import com.noor.ui.theme.NoorTheme
-import java.net.URLDecoder
-import java.net.URLEncoder
+import timber.log.Timber
 
-
-// File: FixedMainActivity.kt
-// Package: com.noteapp
 class MainActivity : ComponentActivity() {
 
     private var noteRepository: FixedNoteRepositoryImpl? = null
     private var notesViewModel: NotesViewModel? = null
     private var editorViewModel: FixedEditorViewModel? = null
+    private var ocrRepository: OCRRepositoryImpl? = null
+    private var ocrViewModel: OCRViewModel? = null
     private lateinit var permissionHandler: PermissionHandler
+
+    companion object {
+        private const val TAG = "MainActivity"
+    }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
-        // Initialize permission handler
+        intent = intent
         permissionHandler = PermissionHandler(this)
 
         setContent {
             NoorTheme {
+                val navController = rememberNavController()
+
+                LaunchedEffect(Unit) {
+                    if (intent.getBooleanExtra("navigate_to_ocr", false)) {
+                        navController.navigate(Routes.OCR_SCREEN)
+                        Timber.tag(TAG).d("Navigating to OCR screen from onCreate LaunchedEffect")
+                    }
+                }
+
                 Surface(
                     modifier = Modifier.fillMaxSize(),
                     color = MaterialTheme.colorScheme.background
@@ -65,11 +74,11 @@ class MainActivity : ComponentActivity() {
                     var hasPermissions by remember { mutableStateOf(permissionHandler.hasStoragePermissions()) }
                     var dependenciesReady by remember { mutableStateOf(false) }
 
-                    // Initialize dependencies when permissions are granted
                     LaunchedEffect(hasPermissions) {
                         if (hasPermissions && !dependenciesReady) {
                             setupDependencies()
                             dependenciesReady = true
+                            initializeBackgroundWork()
                         }
                     }
 
@@ -86,13 +95,12 @@ class MainActivity : ComponentActivity() {
                                         "Storage permission is required for full functionality",
                                         Toast.LENGTH_LONG
                                     ).show()
-                                    hasPermissions = true // Allow limited functionality
+                                    hasPermissions = true
                                 }
                             )
                         }
 
                         !dependenciesReady -> {
-                            // Show loading while dependencies are being set up
                             Box(
                                 modifier = Modifier.fillMaxSize(),
                                 contentAlignment = Alignment.Center
@@ -111,13 +119,10 @@ class MainActivity : ComponentActivity() {
                         }
 
                         else -> {
-                            // Both permissions granted and dependencies ready
-                            val navController = rememberNavController()
-
                             NotesNavigation(
                                 navController = navController,
                                 notesViewModel = notesViewModel!!,
-                                editorViewModel = editorViewModel!!
+                                editorViewModel = editorViewModel!!,
                             )
                         }
                     }
@@ -126,23 +131,40 @@ class MainActivity : ComponentActivity() {
         }
     }
 
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        Timber.tag(TAG).d("Received new intent to navigate to OCR screen")
+    }
+
     private fun setupDependencies() {
         try {
-            Log.d("MainActivity", "Setting up dependencies...")
-
-            // Create repository with fixed implementation
+            Timber.tag(TAG).d("Setting up dependencies...")
             noteRepository = FixedNoteRepositoryImpl(context = applicationContext)
 
-            // Create ViewModels with manual injection
-            notesViewModel = NotesViewModel(repository = noteRepository!!)
+            val ocrProcessor = OCRProcessor(applicationContext)
+            ocrRepository = OCRRepositoryImpl(applicationContext, noteRepository!!, ocrProcessor)
+
+            // Now pass ocrRepository to NotesViewModel
+            notesViewModel =
+                NotesViewModel(repository = noteRepository!!, ocrRepository = ocrRepository!!)
             editorViewModel = FixedEditorViewModel(repository = noteRepository!!)
+            ocrViewModel = OCRViewModel(ocrRepository!!)
 
-            Log.d("MainActivity", "Dependencies initialized successfully")
-            Log.d("MainActivity", "Notes will be saved to: ${noteRepository!!.getStoragePath()}")
-
+            Timber.tag(TAG).d("Dependencies initialized successfully")
+            Timber.tag(TAG).d("Notes will be saved to: ${noteRepository!!.getStoragePath()}")
         } catch (e: Exception) {
-            Log.e("MainActivity", "Error setting up dependencies", e)
+            Timber.tag(TAG).e(e, "Error setting up dependencies")
             Toast.makeText(this, "Error initializing app: ${e.message}", Toast.LENGTH_LONG).show()
+        }
+    }
+
+    private fun initializeBackgroundWork() {
+        try {
+            WorkManagerSetup.scheduleScreenshotScanning(this)
+            Timber.tag(TAG).d("Background work initialized")
+        } catch (e: Exception) {
+            Timber.tag(TAG).e(e, "Failed to initialize background work")
         }
     }
 
@@ -156,133 +178,7 @@ class MainActivity : ComponentActivity() {
 
     override fun onDestroy() {
         super.onDestroy()
-        // Clean up ViewModels manually since we're not using Hilt
-//        notesViewModel?.onCleared()
-//        editorViewModel?.onCleared()
+        Timber.tag(TAG).d("MainActivity destroyed")
     }
 }
 
-
-//class MainActivity : ComponentActivity() {
-//
-//    // Manual DI - Create dependencies manually
-//    private lateinit var noteRepository: NoteRepositoryImpl
-//    private lateinit var notesViewModel: NotesViewModel
-//    private lateinit var editorViewModel: EditorViewModel
-//
-//    override fun onCreate(savedInstanceState: Bundle?) {
-//        super.onCreate(savedInstanceState)
-//
-//        // Initialize dependencies manually
-//        setupDependencies()
-//
-//        setContent {
-//            NoorTheme {
-//                Surface(
-//                    modifier = Modifier.fillMaxSize(),
-//                    color = MaterialTheme.colorScheme.background
-//                ) {
-//                    val navController = rememberNavController()
-//
-//                    NotesNavigation(
-//                        navController = navController,
-//                        notesViewModel = notesViewModel,
-//                        editorViewModel = editorViewModel
-//                    )
-//                }
-//            }
-//        }
-//    }
-//
-//    private fun setupDependencies() {
-//        // Create repository
-//        noteRepository = NoteRepositoryImpl(context = applicationContext)
-//
-//        // Create ViewModels with manual injection
-//        notesViewModel = NotesViewModel(repository = noteRepository)
-//        editorViewModel = EditorViewModel(repository = noteRepository)
-//    }
-//
-////    override fun onDestroy() {
-////        super.onDestroy()
-////        // Clean up ViewModels manually since we're not using Hilt
-////        if (::notesViewModel.isInitialized) {
-////            notesViewModel.onCleared()
-////        }
-////        if (::editorViewModel.isInitialized) {
-////            editorViewModel.onCleared()
-////        }
-////    }
-//
-//}
-
-
-//////////////////
-//@AndroidEntryPoint
-//class MainActivity : ComponentActivity() {
-//    private val requestPermission = registerForActivityResult(
-//        ActivityResultContracts.RequestPermission()
-//    ) { isGranted ->
-//        if (!isGranted) {
-//            finish()
-//        }
-//    }
-//
-//    override fun onCreate(savedInstanceState: Bundle?) {
-//        super.onCreate(savedInstanceState)
-//
-//        // Request permission using Android 14 bottom sheet
-//        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-//            requestPermission.launch(Manifest.permission.READ_MEDIA_IMAGES)
-//        } else {
-//            requestPermission.launch(Manifest.permission.READ_EXTERNAL_STORAGE)
-//        }
-//
-//        setContent {
-//            NoorTheme {
-//                Surface(
-//                    modifier = Modifier.fillMaxSize(),
-//                    color = MaterialTheme.colorScheme.background
-//                ) {
-//                    NoorApp()
-//                }
-//            }
-//        }
-//    }
-//}
-
-@Composable
-fun NoorApp() {
-    val navController = rememberNavController()
-
-    NavHost(
-        navController = navController,
-        startDestination = "albums"
-    ) {
-        composable("albums") {
-            AlbumScreen(
-                onImageClick = { imageIndex, folderPath ->
-                    val encodedPath = URLEncoder.encode(folderPath, "UTF-8")
-                    navController.navigate("fullscreen/$imageIndex/$encodedPath")
-                }
-            )
-        }
-        composable(
-            route = "fullscreen/{imageIndex}/{folderPath}",
-            arguments = listOf(
-                navArgument("imageIndex") { type = NavType.StringType },
-                navArgument("folderPath") { type = NavType.StringType }
-            )
-        ) { backStackEntry ->
-            val imageIndex = backStackEntry.arguments?.getString("imageIndex")?.toIntOrNull() ?: 0
-            val encodedPath = backStackEntry.arguments?.getString("folderPath") ?: ""
-            val folderPath = URLDecoder.decode(encodedPath, "UTF-8")
-
-            FullScreenImageScreen(
-                initialIndex = imageIndex,
-                folderPath = folderPath,
-                onBack = { navController.popBackStack() }
-            )
-        }
-    }
-}

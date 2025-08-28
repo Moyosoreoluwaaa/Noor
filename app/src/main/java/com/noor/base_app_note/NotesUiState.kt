@@ -4,7 +4,8 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.noor.base_app_imageviewer_w_ocr.TagColor
 import com.noor.base_app_imageviewer_w_ocr.TagType
-import com.noor.base_app_note.repository.FixedNoteRepositoryImpl
+import com.noor.base_app_imageviewer_w_ocr_bg_scan.data.repository.OCRRepositoryImpl
+import com.noor.base_app_note.data.repository.FixedNoteRepositoryImpl
 import com.noor.base_app_note.repository.Note
 import com.noor.base_app_note.repository.NoteFolder
 import com.noor.base_app_note.repository.Tag
@@ -55,7 +56,8 @@ data class FolderUiState(
 // File: NotesViewModel.kt
 // Package: com.noteapp.presentation.viewmodel
 class NotesViewModel(
-    private val repository: FixedNoteRepositoryImpl
+    private val repository: FixedNoteRepositoryImpl,
+    private val ocrRepository: OCRRepositoryImpl
 ) : ViewModel() {
     
     private val _uiState = MutableStateFlow(NotesUiState())
@@ -64,7 +66,8 @@ class NotesViewModel(
     init {
         loadData()
     }
-    
+
+
     fun loadData() {
         viewModelScope.launch {
             _uiState.value = _uiState.value.copy(isLoading = true, error = null)
@@ -86,7 +89,44 @@ class NotesViewModel(
             }
         }
     }
-    
+
+    fun scanAndProcessScreenshots() {
+        viewModelScope.launch {
+            Timber.d("Starting scan and process workflow")
+            _uiState.value = _uiState.value.copy(isLoading = true)
+
+            // Always scan first
+            val scanResult = ocrRepository.scanForNewScreenshots()
+            Timber.d("Scan result: newFound=${scanResult.newImagesFound}, totalPending=${scanResult.totalPending}")
+
+            // Process if we have ANY pending images (new OR existing)
+            if (scanResult.totalPending > 0) {
+                Timber.d("Processing pending images. Total: ${scanResult.totalPending}")
+                val processingResult = ocrRepository.processPendingImages()
+
+                Timber.d("Processing complete: processed=${processingResult.processed}, failed=${processingResult.failed}, success=${processingResult.success}")
+                if (processingResult.success) {
+                    Timber.d("Processing succeeded, reloading data")
+                    loadData()
+                    _uiState.value = _uiState.value.copy(isLoading = false)
+                } else {
+                    Timber.e("Processing failed with message: ${processingResult.message}")
+                    _uiState.value = _uiState.value.copy(
+                        isLoading = false,
+                        error = processingResult.message
+                    )
+                }
+            } else {
+                Timber.d("No new or pending images found. Hiding loading state.")
+                _uiState.value = _uiState.value.copy(
+                    isLoading = false,
+                    error = scanResult.message
+                )
+            }
+            Timber.d("Scan and process workflow finished")
+        }
+    }
+
     fun searchNotes(query: String) {
         _uiState.value = _uiState.value.copy(
             searchQuery = query,

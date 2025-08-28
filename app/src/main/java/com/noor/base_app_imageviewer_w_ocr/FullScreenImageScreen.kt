@@ -5,8 +5,6 @@ import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutVertically
-import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.gestures.detectTransformGestures
@@ -14,29 +12,18 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.lazy.LazyRow
-import androidx.compose.foundation.lazy.grid.GridCells
-import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
-import androidx.compose.foundation.lazy.grid.items
-import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.ArrowBack
-import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.Label
 import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.DocumentScanner
-import androidx.compose.material.icons.filled.Label
 import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.Card
-import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
@@ -51,6 +38,8 @@ import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -68,11 +57,14 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
 import coil.request.ImageRequest
+import com.noor.base_app_imageviewer_w_ocr.presentation.components.FullScreenTagSheet
+import com.noor.base_app_imageviewer_w_ocr.presentation.components.performOCR
+import kotlinx.coroutines.DelicateCoroutinesApi
 import kotlinx.coroutines.GlobalScope
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
-@OptIn(ExperimentalMaterial3Api::class)
+@OptIn(ExperimentalMaterial3Api::class, DelicateCoroutinesApi::class)
 @Composable
 fun FullScreenImageScreen(
     initialIndex: Int,
@@ -86,10 +78,10 @@ fun FullScreenImageScreen(
     val ocrProcessor = remember { OCRProcessor(context) }
 
     var images by remember { mutableStateOf<List<ImageItem>>(emptyList()) }
-    var currentIndex by remember { mutableStateOf(initialIndex) }
+    var currentIndex by remember { mutableIntStateOf(initialIndex) }
     var isTopBarVisible by remember { mutableStateOf(true) }
     var isFloatingToolbarVisible by remember { mutableStateOf(false) }
-    var scale by remember { mutableStateOf(1f) }
+    var scale by remember { mutableFloatStateOf(1f) }
     var offset by remember { mutableStateOf(Offset.Zero) }
     var extractedText by remember { mutableStateOf<String?>(null) }
     var isProcessingOCR by remember { mutableStateOf(false) }
@@ -161,8 +153,8 @@ fun FullScreenImageScreen(
                             val newScale = (scale * zoom).coerceIn(0.5f, 4f)
                             scale = newScale
 
-                            if (scale > 1f) {
-                                offset = Offset(
+                            offset = if (scale > 1f) {
+                                Offset(
                                     x = (offset.x + pan.x).coerceIn(
                                         -size.width * (scale - 1) / 2,
                                         size.width * (scale - 1) / 2
@@ -173,7 +165,7 @@ fun FullScreenImageScreen(
                                     )
                                 )
                             } else {
-                                offset = Offset.Zero
+                                Offset.Zero
                             }
                         }
                     }
@@ -245,7 +237,7 @@ fun FullScreenImageScreen(
                 },
                 navigationIcon = {
                     IconButton(onClick = onBack) {
-                        Icon(Icons.Default.ArrowBack, "Back")
+                        Icon(Icons.AutoMirrored.Filled.ArrowBack, "Back")
                     }
                 },
                 colors = TopAppBarDefaults.topAppBarColors(
@@ -334,7 +326,7 @@ fun FullScreenImageScreen(
                         onClick = { showTagSheet = true }
                     ) {
                         Icon(
-                            Icons.Default.Label,
+                            Icons.AutoMirrored.Filled.Label,
                             "Tags",
                             tint = MaterialTheme.colorScheme.primary
                         )
@@ -422,272 +414,3 @@ fun FullScreenImageScreen(
         }
     }
 }
-
-@Composable
-fun FullScreenTagSheet(
-    currentImage: ImageItem,
-    availableTags: List<ImageTag>,
-    onTagAdded: (ImageTag) -> Unit,
-    onTagRemoved: (TagType) -> Unit
-) {
-    Column(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(16.dp)
-    ) {
-        Text(
-            text = "Manage Tags",
-            style = MaterialTheme.typography.headlineSmall,
-            modifier = Modifier.padding(bottom = 8.dp)
-        )
-
-        Text(
-            text = currentImage.displayName,
-            style = MaterialTheme.typography.bodyMedium,
-            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f),
-            modifier = Modifier.padding(bottom = 16.dp)
-        )
-
-        // Current Tags
-        if (currentImage.tags.isNotEmpty()) {
-            Text(
-                text = "Current Tags",
-                style = MaterialTheme.typography.titleMedium,
-                modifier = Modifier.padding(bottom = 8.dp)
-            )
-
-            LazyRow(
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-                modifier = Modifier.padding(bottom = 16.dp)
-            ) {
-                items(currentImage.tags) { tag ->
-                    Surface(
-                        color = tag.color.color,
-                        shape = RoundedCornerShape(16.dp),
-                        modifier = Modifier.clickable { onTagRemoved(tag.type) }
-                    ) {
-                        Row(
-                            modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Text(
-                                text = tag.displayName,
-                                color = Color.White,
-                                style = MaterialTheme.typography.bodySmall
-                            )
-                            Spacer(modifier = Modifier.width(4.dp))
-                            Icon(
-                                Icons.Default.Close,
-                                contentDescription = "Remove",
-                                tint = Color.White,
-                                modifier = Modifier.size(14.dp)
-                            )
-                        }
-                    }
-                }
-            }
-        }
-
-        // Available Tags
-        Text(
-            text = "Add Tags",
-            style = MaterialTheme.typography.titleMedium,
-            modifier = Modifier.padding(bottom = 8.dp)
-        )
-
-        LazyVerticalGrid(
-            columns = GridCells.Fixed(2),
-            verticalArrangement = Arrangement.spacedBy(8.dp),
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
-            modifier = Modifier.height(300.dp)
-        ) {
-            items(availableTags.filter { tag ->
-                !currentImage.tags.any { it.type == tag.type }
-            }) { tag ->
-                Card(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .clickable { onTagAdded(tag) },
-                    colors = CardDefaults.cardColors(
-                        containerColor = tag.color.color.copy(alpha = 0.2f)
-                    )
-                ) {
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(12.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Box(
-                            modifier = Modifier
-                                .size(16.dp)
-                                .background(
-                                    tag.color.color,
-                                    shape = CircleShape
-                                )
-                        )
-                        Spacer(modifier = Modifier.width(8.dp))
-                        Text(
-                            text = tag.displayName,
-                            style = MaterialTheme.typography.bodyMedium
-                        )
-                    }
-                }
-            }
-        }
-
-        Spacer(modifier = Modifier.height(32.dp))
-    }
-}
-
-private suspend fun performOCR(
-    imageUri: String,
-    ocrProcessor: OCRProcessor,
-    onResult: (String) -> Unit,
-    onProcessing: (Boolean) -> Unit
-) {
-    onProcessing(true)
-    try {
-        val result = ocrProcessor.extractText(imageUri)
-        onResult(result)
-    } catch (e: Exception) {
-        onResult("")
-    } finally {
-        onProcessing(false)
-    }
-}
-
-
-//
-//@OptIn(ExperimentalMaterial3Api::class)
-//@Composable
-//fun FullScreenImageScreen(
-//    initialIndex: Int,
-//    folderPath: String,
-//    onBack: () -> Unit
-//) {
-//    val context = LocalContext.current
-//    val imageRepository = remember { ImageRepository(context) }
-//
-//    var images by remember { mutableStateOf<List<ImageItem>>(emptyList()) }
-//    var currentIndex by remember { mutableIntStateOf(initialIndex) }
-//    var isTopBarVisible by remember { mutableStateOf(true) }
-//    var scale by remember { mutableFloatStateOf(1f) }
-//    var offset by remember { mutableStateOf(Offset.Zero) }
-//
-//    LaunchedEffect(folderPath) {
-//        images = imageRepository.getImagesInFolder(folderPath)
-//    }
-//
-//    LaunchedEffect(Unit) {
-//        delay(3000) // Auto-hide top bar after 3 seconds
-//        isTopBarVisible = false
-//    }
-//
-//    Box(modifier = Modifier.fillMaxSize()) {
-//        if (images.isNotEmpty()) {
-//            val currentImage = images[currentIndex]
-//
-//            AsyncImage(
-//                model = ImageRequest.Builder(context)
-//                    .data(currentImage.uri)
-//                    .crossfade(true)
-//                    .build(),
-//                contentDescription = null,
-//                modifier = Modifier
-//                    .fillMaxSize()
-//                    .graphicsLayer(
-//                        scaleX = scale,
-//                        scaleY = scale,
-//                        translationX = offset.x,
-//                        translationY = offset.y
-//                    )
-//                    .pointerInput(Unit) {
-//                        detectTapGestures(
-//                            onTap = {
-//                                isTopBarVisible = !isTopBarVisible
-//                            },
-//                            onDoubleTap = {
-//                                scale = if (scale > 1f) 1f else 2f
-//                                if (scale == 1f) offset = Offset.Zero
-//                            }
-//                        )
-//                    }
-//                    .pointerInput(Unit) {
-//                        detectTransformGestures { _, pan, zoom, _ ->
-//                            val newScale = (scale * zoom).coerceIn(0.5f, 4f)
-//                            scale = newScale
-//
-//                            offset = if (scale > 1f) {
-//                                Offset(
-//                                    x = (offset.x + pan.x).coerceIn(
-//                                        -size.width * (scale - 1) / 2,
-//                                        size.width * (scale - 1) / 2
-//                                    ),
-//                                    y = (offset.y + pan.y).coerceIn(
-//                                        -size.height * (scale - 1) / 2,
-//                                        size.height * (scale - 1) / 2
-//                                    )
-//                                )
-//                            } else {
-//                                Offset.Zero
-//                            }
-//                        }
-//                    }
-//                    .pointerInput(Unit) {
-//                        detectDragGestures(
-//                            onDragEnd = {
-//                                if (scale <= 1f) {
-//                                    if (offset.x > 100) {
-//                                        // Swipe right - previous image
-//                                        if (currentIndex > 0) {
-//                                            currentIndex--
-//                                            scale = 1f
-//                                            offset = Offset.Zero
-//                                        }
-//                                    } else if (offset.x < -100) {
-//                                        // Swipe left - next image
-//                                        if (currentIndex < images.size - 1) {
-//                                            currentIndex++
-//                                            scale = 1f
-//                                            offset = Offset.Zero
-//                                        }
-//                                    }
-//                                    offset = Offset.Zero
-//                                }
-//                            }
-//                        ) { _, dragAmount ->
-//                            if (scale <= 1f) {
-//                                offset = Offset(offset.x + dragAmount.x, 0f)
-//                            }
-//                        }
-//                    },
-//                contentScale = ContentScale.Fit
-//            )
-//        }
-//
-//        // Top Bar with Animation
-//        AnimatedVisibility(
-//            visible = isTopBarVisible,
-//            enter = slideInVertically() + fadeIn(),
-//            exit = slideOutVertically() + fadeOut(),
-//            modifier = Modifier.align(Alignment.TopCenter)
-//        ) {
-//            TopAppBar(
-//                title = {
-//                    if (images.isNotEmpty()) {
-//                        Text(text = images[currentIndex].displayName)
-//                    }
-//                },
-//                navigationIcon = {
-//                    IconButton(onClick = onBack) {
-//                        Icon(Icons.AutoMirrored.Filled.ArrowBack, "Back")
-//                    }
-//                },
-//                colors = TopAppBarDefaults.topAppBarColors(
-//                    containerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.9f)
-//                )
-//            )
-//        }
-//    }
-//}

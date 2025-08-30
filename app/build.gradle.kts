@@ -49,6 +49,7 @@ dependencies {
     implementation("org.jetbrains.kotlinx:kotlinx-collections-immutable:0.3.7")
     // Dependencies moved to toml file
     implementation(libs.androidx.compose.animation)
+    implementation(libs.androidx.lifecycle.service)
     coreLibraryDesugaring(libs.desugar.jdk.libs)
     implementation(libs.amplify.aws.auth.cognito)
     implementation(libs.amplify.core)
